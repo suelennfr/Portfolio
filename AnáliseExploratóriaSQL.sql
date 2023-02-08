@@ -1,88 +1,93 @@
+/* 
+An√°lise explorat√≥ria de dados referentes ao Covid 19 utilizando o SQL (SSMS)
+Fonte: https://ourworldindata.org/covid-deaths
+Projeto guiado por: https://github.com/AlexTheAnalyst
+
+Dados verificados no Excel e importados no SQL Server Management Studio
+*/
+
+-- Verificando os dados importados
+
 SELECT *
 FROM Portifolio..coviddeaths
+WHERE continent IS NOT NULL
 ORDER BY location, date;
 
 SELECT *
 FROM Portifolio..covidvaccination
+WHERE continent IS NOT NULL
 ORDER BY location, date;
 
--- Selecionando os dados que ser„o usados
+-- Verificou-se que algumas localidades est√£o descritas como World, nomes de continentes ou descri√ß√µes de renda.
+-- Como as mesmas n√£o possuem informa√ß√µes de continente, as consultas ser√£o feitas desconsiderando as linhas sem informa√ß√£o de continente.
+
+-- Selecionando os dados que ser√£o utilizados
+
 SELECT location, date, total_cases, new_cases, total_deaths, population
 FROM Portifolio..coviddeaths
+WHERE continent IS NOT NULL
 ORDER BY location, date;
 
--- Verificando total de casos x Total de mortes no Brasil
+-- Verificando a probabilidade de morte em caso de contamina√ß√£o no Brasil
+
 SELECT location, date, total_cases, total_deaths, (total_deaths/total_cases)*100 AS DeathRate --% de mortes por casos confirmados
 FROM Portifolio..coviddeaths
-WHERE location = 'Brazil'
+WHERE location = 'Brazil' AND continent IS NOT NULL
 ORDER BY location, date;
 
--- Verificando total de casos x populaÁ„o no Brasil
+-- Porcentagem de casos no Brasil em rela√ß√£o √† popula√ß√£o
+
 SELECT location, date, population, total_cases, (total_cases/population)*100 AS InfectionRate
 FROM Portifolio..coviddeaths
 WHERE location = 'Brazil'
 ORDER BY location, date;
 
--- Verificando os paises com maiores Ìndices de infecÁ„o em relaÁ„o ‡ populaÁ„o
+-- Analisando os pa√≠ses com maior n√∫mero de contamina√ß√£o
+
 SELECT location, population, MAX(total_cases) AS HighestCasesCount, MAX((total_cases/population)*100) AS InfectionRate
 FROM Portifolio..coviddeaths
 GROUP BY location, population
 ORDER BY InfectionRate DESC;
 
--- Verificando paises com maiores numeros de mortes por populaÁ„o
+-- Analisando os pa√≠ses com maior n√∫mero de mortes em rela√ß√£o √† popula√ß√£o
+-- (foi necess√°rio alterar o tipo da coluna total_deaths pois a primeira consulta retornou valores imprecisos devido ao tipo da coluna ser varchar)
+
 SELECT location, MAX(CAST(total_deaths AS INT)) AS TotalDeathCount
 FROM Portifolio..coviddeaths
+WHERE continent IS NOT NULL
 GROUP BY location
 ORDER BY TotalDeathCount DESC;
---foi necess·rio alterar o tipo da coluna total_deaths pois na primeira consulta percebemos 
---que o total de mortes estava todo comeÁado em 99, ent„o verificando o tipo dos dados percebemos 
---que era varchar, por isso deu um resultado estranho.
 
---aqui tambÈm verificamos que h· algumas localidades como World ou Asia, que incluem mais de um paÌs.
---isso acontece quando o continente est· em branco, entao a location fica sendo o continente
---ent„o em todas queries adicionamos WHERE continent is not null ** e na verdade essa conclusao estava errada
-
---VERIFICANDO POR CONTINENTE
-SELECT continent, MAX(CAST(total_deaths AS INT)) AS TotalDeathCount
-FROM Portifolio..coviddeaths
-WHERE continent is not null
-GROUP BY continent
-ORDER BY TotalDeathCount DESC;
---aqui percebemos que a america do norte inclui somente os dados dos estados unidos
+-- N√∫mero de mortes por continente (dados checados no Google)
 
 SELECT location, MAX(CAST(total_deaths AS INT)) AS TotalDeathCount
 FROM Portifolio..coviddeaths
 WHERE continent is null
 GROUP BY location
 ORDER BY TotalDeathCount DESC;
---aqui vemos os numeros reais. a coluna location tem os numeros corretos e a continent nao È muito precisa
---dados checados no google
 
---N˙meros globais
+--Totais globais de casos, mortes e a taxa de mortes por casos
+
 SELECT date, SUM(new_cases) AS total_cases, SUM(CAST(new_deaths AS int)) AS total_deaths, SUM(CAST(new_deaths AS int))/SUM(new_cases)*100 as DeathRate
 FROM Portifolio..coviddeaths
 WHERE continent is not null
 GROUP BY date
 ORDER BY date, total_cases;
 
---Totais mundiais
-SELECT SUM(new_cases) AS total_cases, SUM(CAST(new_deaths AS int)) AS total_deaths, SUM(CAST(new_deaths AS int))/SUM(new_cases)*100 as DeathRate
-FROM Portifolio..coviddeaths
-WHERE continent is not null
-ORDER BY total_cases;
 
---Juntando as duas tabelas
+-- Informa√ß√µes sobre vacina√ß√£o
+
 SELECT *
 FROM Portifolio..coviddeaths AS dea
 INNER JOIN Portifolio..covidvaccination as vac
 ON dea.location = vac.location
 	AND dea.date = vac.date
-	--conferir se foram agrupadas corretamente
 
--- Verificando total da populaÁ„o x vacinaÁ„o
+-- Porcentagem da popula√ß√£o que recebeu pelo menos uma dose da vacina
+
 SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations,
 	SUM(CAST(vac.new_vaccinations as bigint)) OVER (PARTITION BY dea.location ORDER BY dea.location, dea.date) AS PeopleVaccinated
-	--,(PeopleVaccinated/population)*100   >>> nao podemos usar um alias criado para um calculo (PeopleVaccinated) na mesma linha de cÛdigo
+	--,(PeopleVaccinated/population)*100   
 FROM Portifolio..coviddeaths AS dea
 INNER JOIN Portifolio..covidvaccination as vac
 ON dea.location = vac.location
@@ -90,8 +95,8 @@ ON dea.location = vac.location
 WHERE dea.continent is not null
 ORDER BY continent, location, date
 
--- como nao podemos usar um alias criado para um calculo (PeopleVaccinated) na mesma linha de cÛdigo,
---vamos criar uma CTE
+-- Incluindo CTE
+
 WITH PopxVac AS (
 	SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations,
 	SUM(CAST(vac.new_vaccinations as bigint)) OVER (PARTITION BY dea.location ORDER BY dea.location, dea.date) AS PeopleVaccinated
@@ -104,7 +109,8 @@ WHERE dea.continent is not null
 SELECT *, (PeopleVaccinated/population)*100 AS PercentageVaccinations
 FROM PopxVac
 
---Criando uma tabela tempor·ria (TEMP TABLE)
+--Criando uma tabela tempor√°ria para armazenar informa√ß√µes que podem ser utilizadas posteriormente
+
 CREATE TABLE #PercentPopulationVaccinated
 (
 continent nvarchar(255),
@@ -118,7 +124,7 @@ peoplevaccinated numeric
 INSERT INTO #PercentPopulationVaccinated
 SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations,
 	SUM(CAST(vac.new_vaccinations as bigint)) OVER (PARTITION BY dea.location ORDER BY dea.location, dea.date) AS PeopleVaccinated
-	--,(PeopleVaccinated/population)*100   >>> nao podemos usar um alias criado para um calculo (PeopleVaccinated) na mesma linha de cÛdigo
+	--,(PeopleVaccinated/population)*100   >>> nao podemos usar um alias criado para um calculo (PeopleVaccinated) na mesma linha de c√≥digo
 FROM Portifolio..coviddeaths AS dea
 INNER JOIN Portifolio..covidvaccination as vac
 ON dea.location = vac.location
@@ -128,32 +134,3 @@ WHERE dea.continent is not null
 SELECT *, (PeopleVaccinated/population)*100 AS PercentageVaccinations
 FROM #PercentPopulationVaccinated
 
-
-
---Queries usadas no tableau
-
---1
-SELECT SUM(new_cases) AS total_cases, SUM(CAST(new_deaths AS int)) AS total_deaths, SUM(CAST(new_deaths AS int))/SUM(new_cases)*100 as DeathRate
-FROM Portifolio..coviddeaths
-WHERE continent is not null
-ORDER BY total_cases;
-
---2
-SELECT location, SUM(CAST(new_deaths AS INT)) AS TotalDeathCount
-FROM Portifolio..coviddeaths
-WHERE continent is null
-	AND location NOT IN ('World', 'European Union', 'International', 'High income', 'Upper middle income', 'Lower middle income', 'Low income')
-GROUP BY location
-ORDER BY TotalDeathCount DESC;
-
---3
-SELECT location, population, MAX(total_cases) AS HighestCasesCount, MAX((total_cases/population)*100) AS InfectionRate
-FROM Portifolio..coviddeaths
-GROUP BY location, population
-ORDER BY InfectionRate DESC;
-
---4
-SELECT location, population, date, MAX(total_cases) AS HighestCasesCount, MAX((total_cases/population)*100) AS InfectionRate
-FROM Portifolio..coviddeaths
-GROUP BY location, population, date
-ORDER BY InfectionRate DESC;
